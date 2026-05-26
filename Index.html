@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced TDEE & Macro Engine</title>
+    <style>
+        :root {
+            --bg-color: #f1f5f9;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --border: #cbd5e1;
+            --success: #16a34a;
+            --warning: #ea580c;
+            --danger: #dc2626;
+            
+            --protein-color: #ef4444;
+            --fat-color: #eab308;
+            --carb-color: #3b82f6;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.5;
+            padding: 20px 10px;
+        }
+
+        .wrapper { max-width: 750px; margin: 0 auto; }
+
+        header { text-align: center; margin-bottom: 24px; }
+        header h1 { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.03em; }
+        header p { color: var(--text-muted); font-size: 0.95rem; margin-top: 4px; }
+
+        .calculator-card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            padding: 24px;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+
+        /* Unit Toggle */
+        .unit-toggle {
+            display: flex; background-color: #e2e8f0; padding: 4px; border-radius: 8px; margin-bottom: 20px;
+        }
+        .unit-toggle label {
+            flex: 1; text-align: center; padding: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; border-radius: 6px; color: var(--text-muted); transition: all 0.15s;
+        }
+        .unit-toggle input { display: none; }
+        .unit-toggle input:checked + label { background-color: var(--card-bg); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        /* Forms */
+        .form-group { margin-bottom: 16px; }
+        .form-row { display: flex; gap: 12px; margin-bottom: 16px; }
+        .form-row .form-group { flex: 1; margin-bottom: 0; }
+        label.field-label { display: block; font-weight: 600; font-size: 0.875rem; margin-bottom: 6px; color: var(--text-main); }
+        
+        .gender-group { display: flex; gap: 12px; }
+        .gender-btn { flex: 1; position: relative; }
+        .gender-btn input { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+        .gender-btn label { display: block; text-align: center; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.15s; }
+        .gender-btn input:checked + label { border-color: var(--accent); background-color: #eff6ff; color: var(--accent); font-weight: 600; }
+
+        input[type="number"], select {
+            width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 1rem; color: var(--text-main); outline: none; transition: border-color 0.15s;
+        }
+        input[type="number"]:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+        
+        .input-with-unit { position: relative; }
+        .input-with-unit input { padding-right: 45px; }
+        .input-unit-label { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem; font-weight: 500; pointer-events: none; }
+
+        .calculate-btn { width: 100%; background-color: var(--accent); color: white; border: none; padding: 14px; font-size: 1rem; font-weight: 600; border-radius: 6px; cursor: pointer; margin-top: 10px; transition: background-color 0.15s; }
+        .calculate-btn:hover { background-color: var(--accent-hover); }
+
+        /* Results & Deficit */
+        .results-box { margin-top: 24px; padding-top: 20px; border-top: 2px dashed var(--border); display: none; }
+        .results-box.active { display: block; }
+        .result-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+        .result-row:last-child { border-bottom: none; }
+        .result-val { font-size: 1.5rem; font-weight: 700; color: var(--accent); text-align: right; }
+        
+        .target-box { background-color: #f8fafc; padding: 16px; border-radius: 8px; margin-top: 16px; border: 1px solid #e2e8f0; }
+        .advice-text { font-size: 0.85rem; font-weight: 500; margin-top: 8px; display: block; }
+        .advice-text.green { color: var(--success); }
+        .advice-text.orange { color: var(--warning); }
+        .advice-text.red { color: var(--danger); }
+        
+        .target-inputs-flex { display: flex; gap: 20px; align-items: center; }
+        .target-inputs-flex .form-group { flex: 1; margin-bottom: 0; }
+        .target-inputs-flex .equals-sign { font-size: 1.5rem; font-weight: bold; color: var(--text-muted); margin-top: 25px; }
+
+        /* Macro Table Layout */
+        #macro-section, #recommendations-section { display: none; }
+        #macro-section.active, #recommendations-section.active { display: block; }
+        
+        .macro-header { margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+        
+        .macro-grid-row {
+            display: grid;
+            grid-template-columns: 1.6fr 1fr 1fr 1fr;
+            gap: 12px;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .macro-grid-row.header-row { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); padding-bottom: 8px; }
+        
+        .macro-title-col { display: flex; flex-direction: column; gap: 4px; }
+        .macro-title { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+        .macro-density { font-size: 0.75rem; color: var(--text-muted); font-weight: normal; margin-left: 4px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .dot.protein { background-color: var(--protein-color); }
+        .dot.fat { background-color: var(--fat-color); }
+        .dot.carb { background-color: var(--carb-color); }
+        .macro-rec-text { font-size: 0.75rem; color: var(--text-muted); line-height: 1.2; }
+
+        .macro-input-wrapper { position: relative; }
+        .macro-input-wrapper input { padding: 8px 30px 8px 8px; font-size: 0.95rem; text-align: right; }
+        .macro-input-wrapper .inline-unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem; pointer-events: none; }
+        
+        .macro-read-only { text-align: right; font-weight: 600; color: var(--text-main); padding-right: 10px; }
+
+        /* Recommendations Section */
+        .rec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .rec-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; }
+        .rec-card h3 { font-size: 0.95rem; margin-bottom: 8px; color: var(--text-main); display: flex; align-items: center; gap: 6px; }
+        .rec-card p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+        .rec-card .highlight { font-size: 1.2rem; font-weight: 700; color: var(--accent); margin-bottom: 4px; display: block; }
+        
+        .rec-full-width { grid-column: span 2; background-color: #fffbeb; border-color: #fde68a; }
+        .rec-full-width h3 { color: #92400e; }
+        .rec-full-width p { color: #b45309; }
+        
+        .rec-dark { grid-column: span 2; background-color: #0f172a; border-color: #0f172a; }
+        .rec-dark h3 { color: #f8fafc; }
+        .rec-dark p { color: #94a3b8; }
+        .rec-dark .highlight-text { color: #e2e8f0; font-weight: 600; }
+
+        @media (max-width: 650px) {
+            .macro-grid-row { grid-template-columns: 1fr; gap: 8px; background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border); }
+            .macro-grid-row.header-row { display: none; }
+            .macro-title-col { margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+            .target-inputs-flex { flex-direction: column; gap: 10px; align-items: stretch; }
+            .target-inputs-flex .equals-sign { display: none; }
+            .rec-grid { grid-template-columns: 1fr; }
+            .rec-full-width, .rec-dark { grid-column: span 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="wrapper">
+    <header>
+        <h1>Adaptive TDEE & Macro Engine</h1>
+        <p>Two-way binding with dynamic clinical recommendations</p>
+    </header>
+
+    <main class="calculator-card">
+        <div class="unit-toggle">
+            <input type="radio" id="unit-metric" name="unitSystem" value="metric" checked>
+            <label for="unit-metric">Metric (kg/cm)</label>
+            <input type="radio" id="unit-imperial" name="unitSystem" value="imperial">
+            <label for="unit-imperial">Imperial (lbs/in)</label>
+        </div>
+
+        <form id="calc-form" onsubmit="calculateBaseline(event)">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="field-label">Biological Sex</label>
+                    <div class="gender-group">
+                        <div class="gender-btn"><input type="radio" id="sex-male" name="biologicalSex" value="male" checked><label for="sex-male">Male</label></div>
+                        <div class="gender-btn"><input type="radio" id="sex-female" name="biologicalSex" value="female"><label for="sex-female">Female</label></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="field-label" for="input-age">Age</label>
+                    <input type="number" id="input-age" required min="1" max="120" value="44">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="field-label" for="input-weight">Weight</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="input-weight" required step="0.1" min="1" value="87">
+                        <span class="input-unit-label" id="weight-unit">kg</span>
+                    </div>
+                </div>
+                <div class="form-group" id="height-metric-col">
+                    <label class="field-label" for="input-height-cm">Height</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="input-height-cm" min="1" value="192">
+                        <span class="input-unit-label">cm</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row" id="height-imperial-row" style="display: none;">
+                <div class="form-group"><label class="field-label" for="input-height-ft">Height (Feet)</label><input type="number" id="input-height-ft" min="0"></div>
+                <div class="form-group"><label class="field-label" for="input-height-in">Height (Inches)</label><input type="number" id="input-height-in" min="0" max="11"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="field-label" for="input-activity">Activity Level</label>
+                <select id="input-activity">
+                    <option value="1.2">Sedentary (Little or no exercise)</option>
+                    <option value="1.375">Lightly Active (Exercise 1-3 days/week)</option>
+                    <option value="1.55">Moderately Active (Exercise 3-5 days/week)</option>
+                    <option value="1.725" selected>Very Active (Hard exercise 6-7 days/week)</option>
+                    <option value="1.9">Extra Active (Very hard physical job/training)</option>
+                </select>
+            </div>
+
+            <button type="submit" class="calculate-btn">Initialize Engine</button>
+        </form>
+
+        <div class="results-box" id="results-display">
+            <div class="result-row">
+                <div><strong>BMR</strong> <span style="font-size:0.85rem; color:var(--text-muted);">(Resting Baseline)</span></div>
+                <div class="result-val"><span id="out-bmr">0</span> <span style="font-size:0.9rem;">kcal</span></div>
+            </div>
+            <div class="result-row">
+                <div><strong>TDEE</strong> <span style="font-size:0.85rem; color:var(--text-muted);">(Maintenance)</span></div>
+                <div class="result-val"><span id="out-tdee">0</span> <span style="font-size:0.9rem;">kcal</span></div>
+            </div>
+            
+            <div class="target-box">
+                <div class="target-inputs-flex">
+                    <div class="form-group">
+                        <label class="field-label" for="input-deficit">Caloric Modifier (Deficit)</label>
+                        <div class="input-with-unit">
+                            <input type="number" id="input-deficit" value="500" step="50">
+                            <span class="input-unit-label">kcal</span>
+                        </div>
+                    </div>
+                    <div class="equals-sign">→</div>
+                    <div class="form-group">
+                        <label class="field-label" for="input-target-kcal">Daily Target Intake</label>
+                        <div class="input-with-unit">
+                            <input type="number" id="input-target-kcal" step="10" style="border-color: var(--success); font-weight: bold; color: var(--success);">
+                            <span class="input-unit-label">kcal</span>
+                        </div>
+                    </div>
+                </div>
+                <span id="deficit-advice" class="advice-text green"></span>
+            </div>
+        </div>
+    </main>
+
+    <main class="calculator-card" id="macro-section">
+        <div class="macro-header">
+            <h2>Macro Distribution</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Edit any field below to recalculate the matrix.</p>
+        </div>
+
+        <div class="macro-grid-row header-row">
+            <div>Macro Parameter</div>
+            <div style="text-align: right; padding-right: 8px;">Ratio (g/kg)</div>
+            <div style="text-align: right; padding-right: 8px;">Absolute (g)</div>
+            <div style="text-align: right; padding-right: 8px;">Energy (%)</div>
+        </div>
+        
+        <!-- PROTEIN -->
+        <div class="macro-grid-row">
+            <div class="macro-title-col">
+                <div class="macro-title"><span class="dot protein"></span> Protein <span class="macro-density">(4 kcal/g)</span></div>
+                <div class="macro-rec-text" id="p-rec"></div>
+            </div>
+            <div class="macro-input-wrapper"><input type="number" id="p-gkg" step="0.1" min="0"><span class="inline-unit">g/kg</span></div>
+            <div class="macro-input-wrapper"><input type="number" id="p-g" step="1" min="0"><span class="inline-unit">g</span></div>
+            <div class="macro-input-wrapper"><input type="number" id="p-pct" step="1" min="0"><span class="inline-unit">%</span></div>
+        </div>
+
+        <!-- FAT -->
+        <div class="macro-grid-row">
+            <div class="macro-title-col">
+                <div class="macro-title"><span class="dot fat"></span> Fat <span class="macro-density">(9 kcal/g)</span></div>
+                <div class="macro-rec-text" id="f-rec"></div>
+            </div>
+            <div class="macro-input-wrapper"><input type="number" id="f-gkg" step="0.1" min="0"><span class="inline-unit">g/kg</span></div>
+            <div class="macro-input-wrapper"><input type="number" id="f-g" step="1" min="0"><span class="inline-unit">g</span></div>
+            <div class="macro-input-wrapper"><input type="number" id="f-pct" step="1" min="0"><span class="inline-unit">%</span></div>
+        </div>
+
+        <!-- CARBS (Auto-fill) -->
+        <div class="macro-grid-row" style="background-color: #f8fafc; border-radius: 6px;">
+            <div class="macro-title-col">
+                <div class="macro-title"><span class="dot carb"></span> Carbs <span class="macro-density">(4 kcal/g)</span></div>
+                <div class="macro-rec-text" id="c-rec"></div>
+            </div>
+            <div class="macro-read-only"><span id="c-gkg">0.0</span> <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">g/kg</span></div>
+            <div class="macro-read-only"><span id="c-g">0</span> <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">g</span></div>
+            <div class="macro-read-only" id="c-pct-container"><span id="c-pct">0</span> <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">%</span></div>
+        </div>
+        <div id="carb-warning" style="display:none; text-align:right; color:var(--danger); font-size:0.85rem; margin-top:5px; font-weight:500;">
+            Math Error: Deficit is too aggressive. Carbohydrates have dropped below zero.
+        </div>
+    </main>
+
+    <main class="calculator-card" id="recommendations-section">
+        <div class="macro-header">
+            <h2>Protocol Guidelines</h2>
+        </div>
+        <div class="rec-grid">
+            
+            <div class="rec-card">
+                <h3>👟 Daily Movement</h3>
+                <span class="highlight" id="rec-steps">10,000</span>
+                <p>Target step count to maintain the non-exercise thermogenesis (NEAT) assumed in your activity multiplier.</p>
+            </div>
+
+            <div class="rec-card">
+                <h3>💧 Hydration Baseline</h3>
+                <span class="highlight">1.5L - 2.0L</span>
+                <p>Aim for a minimum of 1.5L daily, pushing to 2L+ when it's hot out or if training intensely.</p>
+            </div>
+
+            <div class="rec-card rec-dark">
+                <h3>⚖️ The Nutritional Hierarchy of Need</h3>
+                <p>For scale weight manipulation, <span class="highlight-text">total daily calories</span> dictate success or failure. If your macros are off, staying under your calorie ceiling will still guarantee weight loss.</p>
+                <p style="margin-top: 8px;">However, for body composition and performance, hitting your <span class="highlight-text">protein target</span> ensures you lose fat rather than muscle. Finally, while they can fluctuate, consistently neglecting your fat minimums will disrupt endocrine function (hormones), and neglecting carbs will destroy high-intensity athletic performance.</p>
+            </div>
+            
+            <div class="rec-card rec-full-width">
+                <h3>🍷 The Alcohol Variable (7 kcal/g)</h3>
+                <p>Alcohol is highly calorific but is not considered a macronutrient because the body cannot store it for functional energy; it treats it as a toxin that must be oxidized immediately, halting fat burning in the process. <br><br>
+                <strong>Dehydration Risk:</strong> Additionally, alcohol acts as a diuretic. Beverages above ~4% ABV actively dehydrate you, as the suppression of anti-diuretic hormone forces your body to expel more liquid than the drink contains.<br><br>
+                <strong>Reference metrics:</strong> A standard pint of beer contains ~200-250 kcal. A large glass of wine (250ml) contains ~225 kcal. These must be subtracted from your carbohydrate or fat allowances.</p>
+            </div>
+
+        </div>
+    </main>
+</div>
+
+<script>
+    // --- UI Toggle Logic ---
+    const metricRadio = document.getElementById('unit-metric');
+    const imperialRadio = document.getElementById('unit-imperial');
+    const weightUnitLabel = document.getElementById('weight-unit');
+    const metricHeightCol = document.getElementById('height-metric-col');
+    const imperialHeightRow = document.getElementById('height-imperial-row');
+    const inputWeight = document.getElementById('input-weight');
+    const inputCm = document.getElementById('input-height-cm');
+    const inputFt = document.getElementById('input-height-ft');
+    const inputIn = document.getElementById('input-height-in');
+
+    function handleUnitChange() {
+        if (metricRadio.checked) {
+            weightUnitLabel.textContent = 'kg';
+            metricHeightCol.style.display = 'block';
+            imperialHeightRow.style.display = 'none';
+            inputCm.required = true; inputFt.required = false; inputIn.required = false;
+        } else {
+            weightUnitLabel.textContent = 'lbs';
+            metricHeightCol.style.display = 'none';
+            imperialHeightRow.style.display = 'flex';
+            inputCm.required = false; inputFt.required = true; inputIn.required = true;
+        }
+    }
+    metricRadio.addEventListener('change', handleUnitChange);
+    imperialRadio.addEventListener('change', handleUnitChange);
+    handleUnitChange();
+
+    // --- Core Engine State ---
+    const appState = {
+        weightKg: 0,
+        bmr: 0,
+        tdee: 0,
+        targetKcal: 0,
+        pGrams: 0,
+        fGrams: 0,
+        activityLevel: 1.2
+    };
+
+    // --- Phase 1: Calculate Baselines ---
+    function calculateBaseline(event) {
+        event.preventDefault();
+
+        const sex = document.querySelector('input[name="biologicalSex"]:checked').value;
+        const age = parseFloat(document.getElementById('input-age').value);
+        appState.activityLevel = parseFloat(document.getElementById('input-activity').value);
+        
+        let weight = parseFloat(inputWeight.value);
+        let heightCm = 0;
+
+        if (imperialRadio.checked) {
+            appState.weightKg = weight * 0.45359237;
+            const ft = parseFloat(inputFt.value) || 0;
+            const inches = parseFloat(inputIn.value) || 0;
+            heightCm = ((ft * 12) + inches) * 2.54;
+        } else {
+            appState.weightKg = weight;
+            heightCm = parseFloat(inputCm.value);
+        }
+
+        // Mifflin St-Jeor
+        let bmr = (10 * appState.weightKg) + (6.25 * heightCm) - (5 * age);
+        bmr += (sex === 'male') ? 5 : -161;
+
+        appState.bmr = bmr;
+        appState.tdee = bmr * appState.activityLevel;
+
+        document.getElementById('out-bmr').textContent = Math.round(appState.bmr).toLocaleString();
+        document.getElementById('out-tdee').textContent = Math.round(appState.tdee).toLocaleString();
+        document.getElementById('results-display').classList.add('active');
+
+        // Initial setup
+        const deficitInput = document.getElementById('input-deficit');
+        appState.targetKcal = appState.tdee - (parseFloat(deficitInput.value) || 0);
+        document.getElementById('input-target-kcal').value = Math.round(appState.targetKcal);
+        
+        updateTargetLogic(parseFloat(deficitInput.value) || 0);
+        updateDynamicGuidelines();
+
+        document.getElementById('macro-section').classList.add('active');
+        document.getElementById('recommendations-section').classList.add('active');
+        
+        let pStart = (appState.activityLevel >= 1.55) ? 1.8 : 1.4;
+        let fStart = (appState.activityLevel >= 1.55) ? 1.0 : 0.9;
+        processMacroInput('p-gkg', pStart, 'protein');
+        processMacroInput('f-gkg', fStart, 'fat');
+    }
+
+    // --- Phase 2: Bi-directional Target Management ---
+    const deficitInput = document.getElementById('input-deficit');
+    const targetInput = document.getElementById('input-target-kcal');
+
+    deficitInput.addEventListener('input', (e) => {
+        if(appState.tdee === 0) return; 
+        const deficit = parseFloat(e.target.value) || 0;
+        appState.targetKcal = appState.tdee - deficit;
+        targetInput.value = Math.round(appState.targetKcal);
+        updateTargetLogic(deficit);
+    });
+
+    targetInput.addEventListener('input', (e) => {
+        if(appState.tdee === 0) return; 
+        const target = parseFloat(e.target.value) || 0;
+        appState.targetKcal = target;
+        const deficit = appState.tdee - target;
+        deficitInput.value = Math.round(deficit);
+        updateTargetLogic(deficit);
+    });
+
+    function updateTargetLogic(deficit) {
+        const adviceEl = document.getElementById('deficit-advice');
+        const pctDeficit = (deficit / appState.tdee) * 100;
+        let isCutting = deficit > 0;
+
+        if (deficit < 0) {
+            adviceEl.textContent = `Surplus of ${Math.abs(Math.round(deficit))} kcal. Optimized for hypertrophy.`;
+            adviceEl.className = 'advice-text green';
+        } else if (appState.targetKcal < appState.bmr) {
+            adviceEl.textContent = "Warning: Target is below your BMR. High risk of metabolic adaptation.";
+            adviceEl.className = 'advice-text red';
+        } else if (pctDeficit <= 12) {
+            adviceEl.textContent = "Mild deficit. Highly sustainable fat loss.";
+            adviceEl.className = 'advice-text green';
+        } else if (pctDeficit <= 22) {
+            adviceEl.textContent = "Moderate deficit. Standard clinical range.";
+            adviceEl.className = 'advice-text green';
+        } else {
+            adviceEl.textContent = "Aggressive deficit. Monitor recovery and fatigue.";
+            adviceEl.className = 'advice-text orange';
+        }
+
+        updateDynamicRecommendations(isCutting);
+
+        // Recalculate macros based on new target ceiling
+        if (appState.pGrams > 0) processMacroInput('p-g', appState.pGrams, 'protein');
+        if (appState.fGrams > 0) processMacroInput('f-g', appState.fGrams, 'fat');
+    }
+
+    function updateDynamicRecommendations(isCutting) {
+        let pRec, fRec, cRec;
+        
+        if (appState.activityLevel <= 1.375) {
+            pRec = isCutting ? "1.4 - 1.8 g/kg (Elevated to protect lean mass)" : "1.0 - 1.4 g/kg (Maintenance)";
+            fRec = "0.8 - 1.0 g/kg (Minimum 20% of total energy)";
+            cRec = "Backfill remaining balance.";
+        } else if (appState.activityLevel <= 1.55) {
+            pRec = isCutting ? "1.8 - 2.0 g/kg (Muscle retention priority)" : "1.4 - 1.8 g/kg (Athletic baseline)";
+            fRec = "0.9 - 1.1 g/kg (Optimal hormone function)";
+            cRec = "Backfill to fuel moderate training demands.";
+        } else {
+            pRec = isCutting ? "2.0 - 2.4 g/kg (Aggressive preservation)" : "1.8 - 2.2 g/kg (Heavy training loads)";
+            fRec = "1.0 - 1.2 g/kg (Sustained endurance)";
+            cRec = "Backfill to maximize glycogen replenishment.";
+        }
+
+        document.getElementById('p-rec').textContent = `Suggested: ${pRec}`;
+        document.getElementById('f-rec').textContent = `Suggested: ${fRec}`;
+        document.getElementById('c-rec').textContent = cRec;
+    }
+
+    function updateDynamicGuidelines() {
+        // Steps tied to Activity Multiplier
+        let steps = "7,000 - 8,000";
+        if(appState.activityLevel >= 1.725) steps = "12,000 - 15,000+";
+        else if(appState.activityLevel >= 1.55) steps = "10,000 - 12,000";
+        else if(appState.activityLevel >= 1.375) steps = "8,000 - 10,000";
+        document.getElementById('rec-steps').textContent = steps;
+    }
+
+    // --- Phase 3: Two-Way Macro Binding ---
+    const inputs = ['p-gkg', 'p-g', 'p-pct', 'f-gkg', 'f-g', 'f-pct'];
+    inputs.forEach(id => {
+        document.getElementById(id).addEventListener('input', function(e) {
+            const type = id.startsWith('p') ? 'protein' : 'fat';
+            processMacroInput(id, parseFloat(e.target.value) || 0, type);
+        });
+    });
+
+    function processMacroInput(sourceId, value, type) {
+        if(appState.targetKcal === 0) return;
+
+        const prefix = type === 'protein' ? 'p' : 'f';
+        const kcalPerGram = type === 'protein' ? 4 : 9;
+        let grams = 0;
+
+        if (sourceId.endsWith('gkg')) {
+            grams = value * appState.weightKg;
+            document.getElementById(`${prefix}-g`).value = Math.round(grams);
+            document.getElementById(`${prefix}-pct`).value = Math.round(((grams * kcalPerGram) / appState.targetKcal) * 100);
+        } else if (sourceId.endsWith('-g')) {
+            grams = value;
+            document.getElementById(`${prefix}-gkg`).value = (grams / appState.weightKg).toFixed(2);
+            document.getElementById(`${prefix}-pct`).value = Math.round(((grams * kcalPerGram) / appState.targetKcal) * 100);
+        } else if (sourceId.endsWith('pct')) {
+            const kcals = (value / 100) * appState.targetKcal;
+            grams = kcals / kcalPerGram;
+            document.getElementById(`${prefix}-g`).value = Math.round(grams);
+            document.getElementById(`${prefix}-gkg`).value = (grams / appState.weightKg).toFixed(2);
+        }
+
+        if (type === 'protein') appState.pGrams = grams;
+        if (type === 'fat') appState.fGrams = grams;
+        calculateCarbs();
+    }
+
+    function calculateCarbs() {
+        const pKcal = appState.pGrams * 4;
+        const fKcal = appState.fGrams * 9;
+        const cKcal = appState.targetKcal - pKcal - fKcal;
+        const cGrams = cKcal / 4;
+
+        const carbWarning = document.getElementById('carb-warning');
+        const cPctContainer = document.getElementById('c-pct-container');
+
+        if (cKcal < 0) {
+            document.getElementById('c-gkg').textContent = "0.0";
+            document.getElementById('c-g').textContent = "0";
+            document.getElementById('c-pct').textContent = "0";
+            carbWarning.style.display = 'block';
+            cPctContainer.style.color = 'var(--danger)';
+        } else {
+            document.getElementById('c-gkg').textContent = (cGrams / appState.weightKg).toFixed(2);
+            document.getElementById('c-g').textContent = Math.round(cGrams);
+            document.getElementById('c-pct').textContent = Math.round((cKcal / appState.targetKcal) * 100);
+            carbWarning.style.display = 'none';
+            cPctContainer.style.color = 'var(--text-main)';
+        }
+    }
+</script>
+
+</body>
+</html>
